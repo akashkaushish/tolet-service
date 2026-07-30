@@ -1,0 +1,64 @@
+services:
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    command: >
+      sh -c "if [ -f package.json ]; then
+        npm run dev -- --hostname 0.0.0.0;
+      else
+        tail -f /dev/null;
+      fi"
+    environment:
+      WATCHPACK_POLLING: "true"
+    restart: unless-stopped
+
+  php:
+    build:
+      context: ./docker/php
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+    environment:
+      APP_ENV: dev
+      DATABASE_URL: "mysql://app:app@database:3306/tolet?serverVersion=11.8.0-MariaDB&charset=utf8mb4"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./docker/nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./backend:/var/www/backend:ro
+    depends_on:
+      - php
+    restart: unless-stopped
+
+  database:
+    image: mariadb:11.8
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_DATABASE: tolet
+      MARIADB_USER: app
+      MARIADB_PASSWORD: app
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:
